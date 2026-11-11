@@ -2,7 +2,8 @@ FROM python:3.11-slim
 
 ENV PYTHONDONTWRITEBYTECODE=1 \
     PYTHONUNBUFFERED=1 \
-    PIP_NO_CACHE_DIR=1
+    PIP_NO_CACHE_DIR=1 \
+    SCHEDULE_DATA_DIR=/data
 
 WORKDIR /app
 
@@ -13,6 +14,10 @@ COPY requirements.txt ./
 RUN pip install --no-cache-dir -r requirements.txt
 
 COPY app ./app
+
+# 持久化数据目录：SQLite 已发布库、发布锁与导入临时文件均放在这里，
+# 通过 compose 命名卷挂载，容器重建后已发布版本仍然存在。
+RUN mkdir -p /data && chown -R app:app /data
 
 USER app
 

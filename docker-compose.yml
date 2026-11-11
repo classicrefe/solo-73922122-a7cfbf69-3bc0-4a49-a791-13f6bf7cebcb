@@ -3,11 +3,14 @@ services:
     build:
       context: .
       dockerfile: Dockerfile
-    container_name: bus-od-suppression-api
+    container_name: bus-schedule-api
     ports:
       - "${HOST_PORT:-8000}:8000"
     environment:
       TZ: "${TZ:-Asia/Shanghai}"
+      SCHEDULE_DATA_DIR: /data
+    volumes:
+      - schedule-data:/data
     restart: unless-stopped
     healthcheck:
       test:
@@ -19,3 +22,6 @@ services:
       timeout: 3s
       retries: 5
       start_period: 5s
+
+volumes:
+  schedule-data:

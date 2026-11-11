@@ -4,6 +4,7 @@ __pycache__
 *.py[cod]
 .venv
 venv
+data
 tests
 examples
 README.md

@@ -1,3 +1,3 @@
-"""Bus OD passenger-flow complementary suppression service."""
+"""Bus schedule package import and OD passenger-flow suppression service."""
 
-__version__ = "1.0.0"
+__version__ = "1.1.0"

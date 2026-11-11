@@ -17,7 +17,9 @@ class ApiTests(unittest.TestCase):
         cls.client = TestClient(app)
 
     def test_health_and_docs(self):
-        self.assertEqual(self.client.get("/health").json(), {"status": "ok"})
+        health = self.client.get("/health").json()
+        self.assertEqual(health["status"], "ok")
+        self.assertIn("schedule_version", health)
         self.assertEqual(self.client.get("/docs").status_code, 200)
         openapi = self.client.get("/openapi.json").json()
         self.assertIn("/suppress", openapi["paths"])

@@ -1,8 +1,9 @@
-# 公交站间客流补充隐藏 API
+# 公交班次包入库与站间客流补充隐藏 API
 
-FastAPI 服务：发布站间客流矩阵时保留真实行列合计，先隐藏 `1..k-1` 人的小客流单元，再以**最少格数**补充隐藏其他单元，使每个先隐藏单元在符合公开值及行列合计的所有非负整数矩阵中至少有两个可行值。
+FastAPI 服务，提供两类能力：
 
-发布矩阵用 `null` 表示隐藏格；响应同时给出每个先隐藏单元的最小、最大可行值，供内部核对。
+1. **整版班次包校验入库**（新增）：上传带版本号的 ZIP 班次包，流式校验三表后整版原子发布到 SQLite，支持按车次查询版本与按序停站。
+2. **站间客流补充隐藏**（原接口，继续可用）：发布客流矩阵时保留真实行列合计，先隐藏 `1..k-1` 人的小客流单元，再以**最少格数**补充隐藏其他单元。
 
 ## 快速启动（Docker Compose）
 
@@ -10,10 +11,11 @@ FastAPI 服务：发布站间客流矩阵时保留真实行列合计，先隐藏
 docker compose up --build -d
 ```
 
-- Swagger UI：<http://localhost:8000/docs>
+- Swagger UI（含上传、查询入口与跨表错误样例）：<http://localhost:8000/docs>
 - ReDoc：<http://localhost:8000/redoc>
 - 健康检查：<http://localhost:8000/health>
-- 可反推示例：<http://localhost:8000/example>
+- 合法班次包样例：<http://localhost:8000/schedule/example/package>
+- 跨表错误样例：<http://localhost:8000/schedule/example/broken-package>
 
 停止：
 
@@ -21,7 +23,7 @@ docker compose up --build -d
 docker compose down
 ```
 
-如需更改宿主机端口：
+数据保存在命名卷 `schedule-data`（容器内 `/data`），容器重建或重启后已发布版本仍然保留。如需更改宿主机端口：
 
 ```bash
 HOST_PORT=18080 docker compose up --build -d
@@ -29,7 +31,115 @@ HOST_PORT=18080 docker compose up --build -d
 
 镜像基于 `python:3.11-slim`，以非 root 用户运行，并带容器健康检查。
 
-## 请求
+---
+
+# 一、班次包入库
+
+## 1. 包格式
+
+`POST /schedule/import` 接收 `multipart/form-data`：
+
+| 表单字段 | 说明 |
+| --- | --- |
+| `version` | 正整数版本号；仅当**高于当前已发布版本**时才生效 |
+| `file` | ZIP 班次包 |
+
+ZIP 内必须且只能包含以下三个 UTF-8 CSV（文件名固定，表内数据行可乱序）：
+
+| 文件 | 列 |
+| --- | --- |
+| `stations.csv` | `station_id,station_name`（站点 ID、站名） |
+| `trips.csv` | `trip_id`（车次 ID） |
+| `stop_times.csv` | `trip_id,station_id,stop_sequence,arrival_sec,departure_sec` |
+
+校验规则：
+
+- 站点 ID、车次 ID 各自唯一，均非空；
+- 停站引用的车次、站点必须在对应表中存在（跨表外键校验）；
+- 同一车次 `stop_sequence` 唯一且为正整数；
+- 到发秒为 `0..172799` 的整数，且按序满足
+  `到站 ≤ 发车 ≤ 下一站到站`；
+- 停站最多 **50 万行**，每个物理行最多 **1 KiB**；
+- 整包读完且 ZIP 校验和（CRC32）与全部跨表校验通过后，才整版替换数据。
+
+坏行会在响应中指出**文件名与物理行号**，例如：
+
+```json
+{
+  "detail": {
+    "status": "invalid_package",
+    "code": "broken_reference",
+    "message": "停站记录引用了站点表中不存在的站点 'S99'。",
+    "file": "stop_times.csv",
+    "line": 4
+  }
+}
+```
+
+## 2. 示例调用
+
+```bash
+# 下载合法样例包
+curl -s http://localhost:8000/schedule/example/package -o pkg.zip
+
+# 上传版本 1
+curl -s -X POST http://localhost:8000/schedule/import \
+  -F version=1 \
+  -F "file=@pkg.zip;type=application/zip"
+```
+
+成功响应：
+
+```json
+{
+  "status": "ok",
+  "version": 1,
+  "previous_version": null,
+  "station_count": 4,
+  "trip_count": 2,
+  "stop_row_count": 8,
+  "package_sha256": "5ac8632c…"
+}
+```
+
+按车次查询版本、按序停站及站名：
+
+```bash
+curl -s http://localhost:8000/schedule/trips/T100
+```
+
+```json
+{
+  "version": 1,
+  "trip_id": "T100",
+  "stops": [
+    {"stop_sequence": 1, "station_id": "S01", "station_name": "人民广场",
+     "arrival_sec": 28800, "departure_sec": 28920}
+  ]
+}
+```
+
+## 3. 状态码与并发语义
+
+| 场景 | 状态码 |
+| --- | --- |
+| 校验通过并发布 | `200` |
+| 版本不高于当前版本 | `409`（`version_conflict`，旧版不变） |
+| ZIP/CSV 结构、行内或跨表校验失败 | `422`（含文件与行号） |
+| 查询的车次不存在 | `404` |
+| 尚未发布任何版本时查询 | `503` |
+
+可靠性保证：
+
+- **整版原子替换**：数据先写入临时 SQLite，全部通过后在 `flock` 排他锁内做版本比较并用 `os.replace` 原子改名；任何失败或进程中断都只丢弃临时库，已发布版本保持可读。
+- **版本不倒退**：版本比较与替换在同一把跨进程排他锁内完成，两个 API 进程并发导入时低版本无法覆盖高版本。
+- **导入期间旧版可查、查询不混版**：查询使用只读连接并在单个快照事务中同时读取版本与停站；发布是文件原子改名，一次查询只会看到单一版本。
+- **重启保留**：已发布库位于持久化卷，启动时仅清理遗留的临时上传/临时库文件。
+- **内存不随行数增长**：CSV 按物理行流式读取（单行超 1 KiB 即报错），按 1000 行批量写入临时 SQLite；Python 侧不缓存全表，跨表校验由 SQL（含窗口函数）完成。
+
+---
+
+# 二、客流补充隐藏（原接口）
 
 `POST /suppress`
 
@@ -160,9 +270,14 @@ python3 -m venv .venv
 . .venv/bin/activate
 pip install -r requirements-dev.txt
 
-uvicorn app.main:app --reload
+# 默认数据目录为工作区下的 data/，可用环境变量覆盖
+SCHEDULE_DATA_DIR=./data uvicorn app.main:app --reload
 python -m unittest discover -s tests -v
 ```
+
+测试覆盖：行内/跨表校验与坏行定位、ZIP 校验和、1 KiB 行边界、50 万行上限、
+版本闸门、线程与跨进程并发不倒退、失败保留旧版、重启持久化、查询不混版，
+以及原 `/suppress` 接口回归。
 
 也可以直接启动容器后访问 `/docs` 的 “Try it out”。
 
@@ -170,11 +285,16 @@ python -m unittest discover -s tests -v
 
 ```text
 app/
-  main.py       FastAPI、请求/响应模型、文档示例
-  solver.py     初次隐藏、最少补充隐藏、整数可行性区间
+  main.py               FastAPI 路由、请求/响应模型、文档示例
+  solver.py             客流初次隐藏、最少补充隐藏、整数可行性区间
+  schedule.py           班次包流式解析、临时 SQLite、跨表校验、原子发布与查询
+  schedule_examples.py  /docs 与示例端点使用的合法/跨表错误 ZIP 样例
 tests/
   test_solver.py
   test_api.py
+  test_schedule.py
+  test_schedule_api.py
+  ziphelper.py
 examples/
   reverse_inferable_*.json
   no_solution_*.json
