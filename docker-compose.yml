@@ -1,0 +1,21 @@
+services:
+  api:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: bus-od-suppression-api
+    ports:
+      - "${HOST_PORT:-8000}:8000"
+    environment:
+      TZ: "${TZ:-Asia/Shanghai}"
+    restart: unless-stopped
+    healthcheck:
+      test:
+        - CMD
+        - python
+        - -c
+        - "import urllib.request; urllib.request.urlopen('http://127.0.0.1:8000/health', timeout=2).read()"
+      interval: 10s
+      timeout: 3s
+      retries: 5
+      start_period: 5s

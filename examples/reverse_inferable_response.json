@@ -1,0 +1,74 @@
+{
+  "status": "ok",
+  "message": "已保留行列合计；先隐藏 1 个小客流单元，并以最少 3 格补充隐藏。",
+  "k": 2,
+  "row_stations": [
+    "人民广场",
+    "陆家嘴"
+  ],
+  "column_stations": [
+    "静安寺",
+    "徐家汇",
+    "世纪大道"
+  ],
+  "published_matrix": [
+    [
+      null,
+      null,
+      3
+    ],
+    [
+      null,
+      null,
+      6
+    ]
+  ],
+  "row_totals": [
+    6,
+    15
+  ],
+  "column_totals": [
+    5,
+    7,
+    9
+  ],
+  "primary_suppressed_cells": [
+    {
+      "row": 0,
+      "column": 0,
+      "row_station": "人民广场",
+      "column_station": "静安寺",
+      "suppression_type": "primary",
+      "min_feasible": 0,
+      "max_feasible": 3,
+      "feasible_value_count": 4,
+      "protected": true
+    }
+  ],
+  "secondary_suppressed_cells": [
+    {
+      "row": 0,
+      "column": 1,
+      "row_station": "人民广场",
+      "column_station": "徐家汇",
+      "suppression_type": "secondary"
+    },
+    {
+      "row": 1,
+      "column": 0,
+      "row_station": "陆家嘴",
+      "column_station": "静安寺",
+      "suppression_type": "secondary"
+    },
+    {
+      "row": 1,
+      "column": 1,
+      "row_station": "陆家嘴",
+      "column_station": "徐家汇",
+      "suppression_type": "secondary"
+    }
+  ],
+  "primary_suppressed_count": 1,
+  "secondary_suppressed_count": 3,
+  "total_suppressed_count": 4
+}

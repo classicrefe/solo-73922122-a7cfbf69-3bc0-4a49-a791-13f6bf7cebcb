@@ -1,0 +1,15 @@
+{
+  "detail": {
+    "status": "no_solution",
+    "message": "无法保留这些行列合计发布：即使补充隐藏所有非初次隐藏单元，仍有先隐藏单元只能取唯一值。",
+    "reason": "无法在保留公开行列合计的前提下保护所有小客流单元",
+    "unprotectable_cells": [
+      {
+        "row": 0,
+        "column": 1,
+        "row_station": "甲站",
+        "column_station": "丁站"
+      }
+    ]
+  }
+}
